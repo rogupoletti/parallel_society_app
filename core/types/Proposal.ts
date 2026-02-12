@@ -1,3 +1,13 @@
+import { ProposalStatus } from '../constants/governance';
+export { ProposalStatus };
+
+export interface ProposalPermissions {
+    canEdit: boolean;
+    canStartVote: boolean;
+    canCancel: boolean;
+    canComment: boolean;
+    canModerate: boolean;
+}
 
 export interface Proposal {
     id: string;
@@ -9,7 +19,19 @@ export interface Proposal {
     createdAt: number;
     startTime: number;
     endTime: number;
-    status: 'UPCOMING' | 'ACTIVE' | 'CLOSED' | 'PASSED' | 'FAILED';
+    status: ProposalStatus;
+
+    // Discussion fields
+    discussionStartedAt?: number;
+    discussionEndsAt?: number;
+    discussionPeriodDays?: number; // default: 7
+    isEdited?: boolean;
+    lastEditedAt?: number;
+    revisionCount?: number;
+    commentCount?: number;
+
+    // Permissions (computed by backend based on caller)
+    permissions?: ProposalPermissions;
 
     // Snapshot strategy
     snapshotBlock?: number;

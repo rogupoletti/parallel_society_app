@@ -132,7 +132,7 @@ export default function GovernanceScreen() {
                             by {item.authorName || (item.authorAddress ? `${item.authorAddress.slice(0, 6)}...${item.authorAddress.slice(-4)}` : 'Unknown')}
                         </Text>
                         <Text style={styles.endDateText}>
-                            {['CLOSED', 'PASSED', 'FAILED'].includes(item.status) ? 'Ended' : 'Ends'} {new Date(item.endTime).toLocaleDateString()}
+                            {['CLOSED', 'PASSED', 'FAILED', 'VOTING_ENDED'].includes(item.status) ? 'Ended' : 'Ends'} {new Date(item.endTime).toLocaleDateString()}
                         </Text>
                     </View>
                 </View>

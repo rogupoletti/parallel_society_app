@@ -43,7 +43,7 @@ export const ProposalStatusStrip: React.FC<ProposalStatusStripProps> = ({
                 }
                 return GOVERNANCE_STRINGS.VOTING_IS_LIVE;
             case 'VOTING_ENDED':
-                return 'Voting has ended';
+                return 'Voting ended — awaiting final count';
             case 'ACCEPTED':
                 return 'Proposal accepted';
             case 'REJECTED':

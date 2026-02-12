@@ -8,6 +8,7 @@ import { Proposal } from '@/core/types/Proposal';
 import Markdown from 'react-native-markdown-display';
 import { firebaseAuth } from '@/core/config/firebase';
 import { InfoModal } from '@/components/ui/InfoModal';
+import { PROPOSAL_STATUS_COLORS, PROPOSAL_STATUS_LABELS } from '@/core/constants/governance';
 
 export default function GovernanceScreen() {
     const router = useRouter();
@@ -80,25 +81,8 @@ export default function GovernanceScreen() {
     const renderProposal = ({ item }: { item: Proposal }) => {
         const isOwner = currentUser && item.authorAddress?.toLowerCase() === currentUser.uid?.toLowerCase();
 
-        const getStatusColor = (status: string) => {
-            switch (status) {
-                case 'ACTIVE': return styles.statusActive;
-                case 'PASSED': return styles.statusPassed;
-                case 'FAILED': return styles.statusFailed;
-                case 'UPCOMING': return styles.statusUpcoming;
-                default: return styles.statusClosed;
-            }
-        };
-
-        const getStatusTextColor = (status: string) => {
-            switch (status) {
-                case 'ACTIVE': return styles.statusTextActive;
-                case 'PASSED': return styles.statusTextPassed;
-                case 'FAILED': return styles.statusTextFailed;
-                case 'UPCOMING': return styles.statusTextUpcoming;
-                default: return styles.statusTextClosed;
-            }
-        };
+        const statusColors = PROPOSAL_STATUS_COLORS[item.status] || { bg: '#f0f0f0', text: '#666' };
+        const statusLabel = PROPOSAL_STATUS_LABELS[item.status] || item.status;
 
         return (
             <TouchableOpacity
@@ -109,9 +93,9 @@ export default function GovernanceScreen() {
                 <View style={styles.card}>
                     <View style={styles.cardHeader}>
                         <View style={styles.headerLeft}>
-                            <View style={[styles.statusBadge, getStatusColor(item.status)]}>
-                                <Text style={[styles.statusText, getStatusTextColor(item.status)]}>
-                                    {item.status}
+                            <View style={[styles.statusBadge, { backgroundColor: statusColors.bg }]}>
+                                <Text style={[styles.statusText, { color: statusColors.text }]}>
+                                    {statusLabel}
                                 </Text>
                             </View>
                             <View style={styles.categoryBadge}>
@@ -148,7 +132,7 @@ export default function GovernanceScreen() {
                             by {item.authorName || (item.authorAddress ? `${item.authorAddress.slice(0, 6)}...${item.authorAddress.slice(-4)}` : 'Unknown')}
                         </Text>
                         <Text style={styles.endDateText}>
-                            {['CLOSED', 'PASSED', 'FAILED'].includes(item.status) ? 'Ended' : 'Ends'} {new Date(item.endTime).toLocaleDateString()}
+                            {['CLOSED', 'PASSED', 'FAILED', 'VOTING_ENDED'].includes(item.status) ? 'Ended' : 'Ends'} {new Date(item.endTime).toLocaleDateString()}
                         </Text>
                     </View>
                 </View>

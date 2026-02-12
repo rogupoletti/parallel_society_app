@@ -16,6 +16,12 @@ import { ProposalUpdatesList } from '@/components/governance/ProposalUpdatesList
 import { AddProposalUpdateModal } from '@/components/governance/AddProposalUpdateModal';
 import { balanceService } from '@/core/services/BalanceService';
 import { TOKENS } from '@/core/config/tokens';
+import { ProposalStatusStrip } from '@/components/governance/ProposalStatusStrip';
+import { DiscussionSection } from '@/components/governance/DiscussionSection';
+import { ProposalEditor } from '@/components/governance/ProposalEditor';
+import { RevisionHistory } from '@/components/governance/RevisionHistory';
+import { StartVoteModal } from '@/components/governance/StartVoteModal';
+import { PROPOSAL_EDITABLE_STATUSES, DISCUSSION_VISIBLE_STATUSES } from '@/core/constants/governance';
 
 export default function ProposalDetailsScreen() {
     const { id } = useLocalSearchParams();
@@ -31,6 +37,12 @@ export default function ProposalDetailsScreen() {
     const [editingUpdate, setEditingUpdate] = useState<ProposalUpdate | null>(null);
     const [userLutBalance, setUserLutBalance] = useState<string>('0');
     const [refreshUpdates, setRefreshUpdates] = useState(0);
+
+    // Discussion module state
+    const [showEditor, setShowEditor] = useState(false);
+    const [showRevisions, setShowRevisions] = useState(false);
+    const [showStartVoteModal, setShowStartVoteModal] = useState(false);
+    const [startingVote, setStartingVote] = useState(false);
 
     // Generic Modal State
     const [modalConfig, setModalConfig] = useState<{
@@ -198,27 +210,90 @@ export default function ProposalDetailsScreen() {
         }
     };
 
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'ACTIVE': return styles.statusActive;
-            case 'PASSED': return styles.statusPassed;
-            case 'FAILED': return styles.statusFailed;
-            case 'UPCOMING': return styles.statusUpcoming;
-            default: return styles.statusClosed;
+
+
+    const isVotingClosed = ['CLOSED', 'PASSED', 'FAILED', 'VOTING_ENDED', 'ACCEPTED', 'REJECTED', 'CANCELED', 'ARCHIVED'].includes(proposal.status);
+    const isAuthor = walletAddress ? walletAddress.toLowerCase() === proposal.authorAddress?.toLowerCase() : false;
+    const canEdit = PROPOSAL_EDITABLE_STATUSES.includes(proposal.status) && isAuthor;
+    const showDiscussion = DISCUSSION_VISIBLE_STATUSES.includes(proposal.status);
+
+    const handlePublishToDiscussion = async () => {
+        try {
+            await ProposalService.publishToDiscussion(proposal.id);
+            setModalConfig({
+                visible: true,
+                title: 'Published!',
+                message: 'Your proposal is now open for community discussion.',
+                variant: 'success',
+            });
+            loadProposal();
+        } catch (err: any) {
+            setModalConfig({
+                visible: true,
+                title: 'Error',
+                message: err.message || 'Failed to publish proposal',
+                variant: 'error',
+            });
         }
     };
 
-    const getStatusTextColor = (status: string) => {
-        switch (status) {
-            case 'ACTIVE': return styles.statusTextActive;
-            case 'PASSED': return styles.statusTextPassed;
-            case 'FAILED': return styles.statusTextFailed;
-            case 'UPCOMING': return styles.statusTextUpcoming;
-            default: return styles.statusTextClosed;
+    const handleStartVote = async () => {
+        setStartingVote(true);
+        try {
+            await ProposalService.startVote(proposal.id);
+            setShowStartVoteModal(false);
+            setModalConfig({
+                visible: true,
+                title: 'Vote Started!',
+                message: 'The voting period has begun. Citizens can now cast their votes.',
+                variant: 'success',
+            });
+            loadProposal();
+        } catch (err: any) {
+            setModalConfig({
+                visible: true,
+                title: 'Error',
+                message: err.message || 'Failed to start vote',
+                variant: 'error',
+            });
+        } finally {
+            setStartingVote(false);
         }
     };
 
-    const isVotingClosed = ['CLOSED', 'PASSED', 'FAILED'].includes(proposal.status);
+    const handleCancelProposal = async () => {
+        setModalConfig({
+            visible: true,
+            title: 'Cancel Proposal?',
+            message: 'This action cannot be undone. The proposal will be permanently canceled.',
+            variant: 'warning',
+            actions: [
+                { text: 'Keep Proposal', onPress: closePortal, variant: 'secondary' },
+                {
+                    text: 'Cancel Proposal', variant: 'danger', onPress: async () => {
+                        closePortal();
+                        try {
+                            await ProposalService.cancelProposal(proposal.id);
+                            setModalConfig({
+                                visible: true,
+                                title: 'Canceled',
+                                message: 'Proposal has been canceled.',
+                                variant: 'info',
+                            });
+                            loadProposal();
+                        } catch (err: any) {
+                            setModalConfig({
+                                visible: true,
+                                title: 'Error',
+                                message: err.message || 'Failed to cancel proposal',
+                                variant: 'error',
+                            });
+                        }
+                    }
+                }
+            ]
+        });
+    };
 
     const shortenAddress = (addr: string) => {
         if (!addr) return '';
@@ -230,45 +305,97 @@ export default function ProposalDetailsScreen() {
         <ScrollView style={styles.container} contentContainerStyle={styles.content}>
             <Stack.Screen options={{ title: 'Proposal Details' }} />
 
-            <View style={styles.header}>
-                <View style={styles.badgesRow}>
-                    <View style={[styles.statusBadge, getStatusColor(proposal.status)]}>
-                        <Text style={[styles.statusText, getStatusTextColor(proposal.status)]}>
-                            {proposal.status}
-                        </Text>
-                    </View>
+            {/* ── Hero Card ── */}
+            <View style={styles.heroCard}>
+                {/* Status Strip (embedded) */}
+                <ProposalStatusStrip
+                    status={proposal.status}
+                    discussionEndsAt={proposal.discussionEndsAt}
+                    endTime={proposal.endTime}
+                    isAuthor={isAuthor}
+                    onPublish={handlePublishToDiscussion}
+                    onStartVote={() => setShowStartVoteModal(true)}
+                    onCancel={handleCancelProposal}
+                />
+
+                {/* Title */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <Text style={styles.heroTitle}>{proposal.title}</Text>
+                    {proposal.proposalCid && (
+                        <TouchableOpacity onPress={() => Linking.openURL(`https://ipfs.filebase.io/ipfs/${proposal.proposalCid}`)}>
+                            <Ionicons name="open-outline" size={16} color="#007AFF" />
+                        </TouchableOpacity>
+                    )}
+                </View>
+
+                {/* Description preview */}
+                <Text style={styles.heroDescription} numberOfLines={3}>
+                    {(proposal.description || '').replace(/[#*_~`>|\-]/g, '').trim()}
+                </Text>
+
+                {/* Badges row */}
+                <View style={styles.heroBadgesRow}>
                     <View style={styles.categoryBadge}>
                         <Text style={styles.categoryText}>{proposal.category}</Text>
                     </View>
+                    {proposal.isEdited && (
+                        <View style={styles.editedBadge}>
+                            <Ionicons name="pencil-outline" size={10} color="#6f42c1" />
+                            <Text style={styles.editedText}>Edited</Text>
+                        </View>
+                    )}
+                    <Text style={styles.heroDate}>
+                        {new Date(proposal.createdAt).toLocaleDateString()}
+                    </Text>
                 </View>
-                <Text style={styles.dateText}>
-                    Created {new Date(proposal.createdAt).toLocaleDateString()}
-                </Text>
-            </View>
 
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-                <Text style={[styles.title, { marginBottom: 0 }]}>{proposal.title}</Text>
-                {proposal.proposalCid && (
-                    <TouchableOpacity onPress={() => Linking.openURL(`https://ipfs.filebase.io/ipfs/${proposal.proposalCid}`)}>
-                        <Ionicons name="open-outline" size={18} color="#007AFF" />
-                    </TouchableOpacity>
+                {/* Author row with avatar */}
+                <View style={styles.heroAuthorRow}>
+                    <View style={styles.heroAvatar}>
+                        <Text style={styles.heroAvatarText}>
+                            {(proposal.authorName || proposal.authorAddress || '?')[0].toUpperCase()}
+                        </Text>
+                    </View>
+                    <Text style={styles.heroAuthorLabel}>Authored by </Text>
+                    <Text style={styles.heroAuthorName}>
+                        {proposal.authorName || shortenAddress(proposal.authorAddress)}
+                    </Text>
+                </View>
+
+                {/* Snapshot Info */}
+                {proposal.snapshotBlock && (
+                    <View style={styles.snapshotContainer}>
+                        <Ionicons name="camera-outline" size={14} color="#666" />
+                        <Text style={styles.snapshotText}>
+                            Snapshot Block: <Text style={styles.snapshotValue}>{proposal.snapshotBlock}</Text>
+                        </Text>
+                    </View>
                 )}
             </View>
 
-            <View style={styles.authorRow}>
-                <Text style={styles.authorLabel}>Proposed by</Text>
-                <Text style={styles.authorAddress}>
-                    {proposal.authorName || shortenAddress(proposal.authorAddress)}
-                </Text>
-            </View>
-
-            {/* Snapshot Info */}
-            {proposal.snapshotBlock && (
-                <View style={styles.snapshotContainer}>
-                    <Ionicons name="camera-outline" size={16} color="#666" />
-                    <Text style={styles.snapshotText}>
-                        Snapshot Block: <Text style={styles.snapshotValue}>{proposal.snapshotBlock}</Text>
-                    </Text>
+            {/* Edit / Revisions Row */}
+            {(canEdit || (proposal.revisionCount && proposal.revisionCount > 0)) && (
+                <View style={styles.editRow}>
+                    {canEdit && (
+                        <TouchableOpacity
+                            style={styles.editButton}
+                            onPress={() => setShowEditor(true)}
+                        >
+                            <Ionicons name="create-outline" size={16} color="#007AFF" />
+                            <Text style={styles.editButtonText}>Edit Proposal</Text>
+                        </TouchableOpacity>
+                    )}
+                    {proposal.revisionCount && proposal.revisionCount > 0 ? (
+                        <TouchableOpacity
+                            style={styles.revisionsButton}
+                            onPress={() => setShowRevisions(true)}
+                        >
+                            <Ionicons name="time-outline" size={15} color="#666" />
+                            <Text style={styles.revisionsButtonText}>
+                                {proposal.revisionCount} {proposal.revisionCount === 1 ? 'revision' : 'revisions'}
+                            </Text>
+                        </TouchableOpacity>
+                    ) : null}
                 </View>
             )}
 
@@ -372,8 +499,17 @@ export default function ProposalDetailsScreen() {
                 </View>
             )}
 
+            {/* Discussion Section */}
+            {showDiscussion && (
+                <DiscussionSection
+                    proposalId={proposal.id}
+                    proposalStatus={proposal.status}
+                    isProposalAuthor={isAuthor}
+                />
+            )}
+
             {/* Implementation Updates Section - Only for PASSED proposals */}
-            {proposal.status === 'PASSED' && (
+            {proposal.status === 'ACCEPTED' && (
                 <View style={styles.section}>
                     <ProposalUpdatesList
                         proposalId={proposal.id}
@@ -390,7 +526,7 @@ export default function ProposalDetailsScreen() {
             )}
 
             {/* Add Update Button - Floating */}
-            {proposal.status === 'PASSED' && firebaseAuth.currentUser && walletAddress && proposal.authorAddress && walletAddress.toLowerCase() === proposal.authorAddress.toLowerCase() && (
+            {proposal.status === 'ACCEPTED' && firebaseAuth.currentUser && walletAddress && proposal.authorAddress && walletAddress.toLowerCase() === proposal.authorAddress.toLowerCase() && (
                 <TouchableOpacity
                     style={[
                         styles.floatingButton,
@@ -444,6 +580,36 @@ export default function ProposalDetailsScreen() {
                 }}
             />
 
+            {/* Start Vote Modal */}
+            <StartVoteModal
+                visible={showStartVoteModal}
+                proposalTitle={proposal.title}
+                onConfirm={handleStartVote}
+                onCancel={() => setShowStartVoteModal(false)}
+                loading={startingVote}
+            />
+
+            {/* Proposal Editor Modal */}
+            {showEditor && (
+                <ProposalEditor
+                    visible={showEditor}
+                    proposalId={proposal.id}
+                    proposalStatus={proposal.status}
+                    initialTitle={proposal.title}
+                    initialSummary={proposal.category}
+                    initialBody={proposal.description}
+                    onClose={() => setShowEditor(false)}
+                    onSave={loadProposal}
+                />
+            )}
+
+            {/* Revision History Modal */}
+            <RevisionHistory
+                visible={showRevisions}
+                proposalId={proposal.id}
+                onClose={() => setShowRevisions(false)}
+            />
+
         </ScrollView >
     );
 }
@@ -456,15 +622,72 @@ const styles = StyleSheet.create({
     retryButton: { padding: 10, backgroundColor: '#007AFF', borderRadius: 8 },
     retryText: { color: '#fff' },
 
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-    badgesRow: { flexDirection: 'row', gap: 8 },
-    dateText: { fontSize: 12, color: '#999' },
-
-    title: { fontSize: 24, fontWeight: '700', color: '#1a1a1a', marginBottom: 16 },
-
-    authorRow: { flexDirection: 'row', gap: 6, marginBottom: 20 },
-    authorLabel: { color: '#666' },
-    authorAddress: { color: '#007AFF', fontFamily: 'monospace' },
+    // ── Hero Card ──
+    heroCard: {
+        backgroundColor: '#fff',
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 16,
+        shadowColor: '#000',
+        shadowOpacity: 0.06,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 2 },
+        elevation: 2,
+    },
+    heroTitle: {
+        fontSize: 20,
+        fontWeight: '700',
+        color: '#1a1a1a',
+        marginTop: 12,
+    },
+    heroDescription: {
+        fontSize: 14,
+        color: '#666',
+        lineHeight: 20,
+        marginTop: 8,
+    },
+    heroBadgesRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginTop: 12,
+    },
+    heroDate: {
+        fontSize: 12,
+        color: '#999',
+        marginLeft: 'auto',
+    },
+    heroAuthorRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 14,
+        paddingTop: 14,
+        borderTopWidth: 1,
+        borderTopColor: '#f0f0f0',
+    },
+    heroAvatar: {
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        backgroundColor: '#e0e7ef',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 8,
+    },
+    heroAvatarText: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: '#555',
+    },
+    heroAuthorLabel: {
+        fontSize: 13,
+        color: '#888',
+    },
+    heroAuthorName: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#333',
+    },
 
     snapshotContainer: {
         flexDirection: 'row',
@@ -474,14 +697,13 @@ const styles = StyleSheet.create({
         padding: 8,
         borderRadius: 6,
         alignSelf: 'flex-start',
-        marginBottom: 20
+        marginTop: 12,
     },
     snapshotText: { fontSize: 13, color: '#495057' },
     snapshotValue: { fontWeight: '700', fontFamily: 'monospace' },
 
     section: { marginBottom: 24, backgroundColor: '#fff', padding: 16, borderRadius: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 },
     sectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: 12, color: '#333' },
-
     markdownBox: { minHeight: 60 },
 
     resultRow: { marginBottom: 16 },
@@ -501,7 +723,7 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         marginBottom: 24,
         borderWidth: 1,
-        borderColor: '#007AFF20'
+        borderColor: '#007AFF20',
     },
     myVoteText: { color: '#004085', fontSize: 14 },
 
@@ -512,22 +734,44 @@ const styles = StyleSheet.create({
     voteButtonDisabled: { opacity: 0.6 },
     voteButtonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
 
-    // Status Styles (copied from index based on provided code)
-    statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
-    statusActive: { backgroundColor: '#e6f4ea' },
-    statusPassed: { backgroundColor: '#d1e7dd' },
-    statusFailed: { backgroundColor: '#f8d7da' },
-    statusUpcoming: { backgroundColor: '#e2e3e5' },
-    statusClosed: { backgroundColor: '#f0f0f0' },
-    statusText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
-    statusTextActive: { color: '#1e7e34' },
-    statusTextPassed: { color: '#0f5132' },
-    statusTextFailed: { color: '#842029' },
-    statusTextUpcoming: { color: '#41464b' },
-    statusTextClosed: { color: '#666' },
-
     categoryBadge: { backgroundColor: '#f0f0f0', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
     categoryText: { fontSize: 12, color: '#555', fontWeight: '500' },
+
+    editedBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+        backgroundColor: '#f3e8ff',
+        paddingHorizontal: 6,
+        paddingVertical: 3,
+        borderRadius: 4,
+    },
+    editedText: { fontSize: 10, color: '#6f42c1', fontWeight: '600' },
+
+    editRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        marginBottom: 16,
+    },
+    editButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        backgroundColor: '#f0f7ff',
+        borderRadius: 8,
+    },
+    editButtonText: { fontSize: 14, color: '#007AFF', fontWeight: '600' },
+    revisionsButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingVertical: 8,
+        paddingHorizontal: 10,
+    },
+    revisionsButtonText: { fontSize: 13, color: '#666', fontWeight: '500' },
 
     floatingButton: {
         position: 'absolute',

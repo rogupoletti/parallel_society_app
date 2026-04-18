@@ -1,26 +1,46 @@
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Switch, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Switch, KeyboardAvoidingView, ScrollView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { SecureStorage } from '@/core/secure/SecureStorage';
 import { useAuthStore } from '@/store/authStore';
+import { useOnboardingStore } from '@/store/onboardingStore';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { ethers } from 'ethers';
+import { InfoModal } from '@/components/ui/InfoModal';
 
 export default function SetPinScreen() {
     const router = useRouter();
-    const { setBiometricsEnabled } = useAuthStore();
+    const { login, setBiometricsEnabled } = useAuthStore();
+    const { username, email, reset: resetOnboarding } = useOnboardingStore();
     const [pin, setPin] = useState('');
     const [confirmPin, setConfirmPin] = useState('');
     const [useBiometrics, setUseBiometrics] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // Modal state
+    const [modalConfig, setModalConfig] = useState<{
+        visible: boolean;
+        title: string;
+        message: string;
+        variant: 'info' | 'error' | 'success' | 'warning';
+    }>({
+        visible: false,
+        title: '',
+        message: '',
+        variant: 'info'
+    });
+
+    const showAlert = (title: string, message: string, variant: 'info' | 'error' | 'success' | 'warning' = 'error') => {
+        setModalConfig({ visible: true, title, message, variant });
+    };
+
     const handleFinish = async () => {
         if (pin.length !== 6) {
-            Alert.alert('Invalid PIN', 'PIN must be 6 digits.');
+            showAlert('Invalid PIN', 'PIN must be 6 digits.');
             return;
         }
         if (pin !== confirmPin) {
-            Alert.alert('Mismatch', 'PINs do not match.');
+            showAlert('Mismatch', 'PINs do not match.');
             return;
         }
 
@@ -34,64 +54,86 @@ export default function SetPinScreen() {
                 const hasHardware = await LocalAuthentication.hasHardwareAsync();
                 if (hasHardware) {
                     await SecureStorage.saveEncryptedKey('use_biometrics', 'true');
-                    // Update store after a small delay or ensure it doesn't unmount this component prematurely
-                    // Actually, updating the store is fine, but we should navigate first or ensure the store update doesn't kill the route.
                     setBiometricsEnabled(true);
                 }
             }
 
-            // Use replace to go home, but ensure we are not in a race condition
+            // Automatic Login after onboarding
+            const mnemonic = await SecureStorage.getEncryptedKey('mnemonic');
+            if (mnemonic) {
+                await login(mnemonic, username, email);
+                resetOnboarding();
+            }
+
+            // Use replace to go home
             router.dismissAll();
             router.replace('/home');
-        } catch (e) {
-            Alert.alert('Error', 'Failed to save security settings.');
+        } catch (e: any) {
+            showAlert('Error', e.message || 'Failed to save security settings.');
             setIsSubmitting(false);
         }
     };
 
     return (
-        <View style={styles.container}>
-            <Text style={styles.title}>Set App Lock</Text>
-            <Text style={styles.description}>
-                Create a 6-digit PIN to secure your wallet.
-            </Text>
-
-            <TextInput
-                style={styles.input}
-                placeholder="Enter 6-digit PIN"
-                value={pin}
-                onChangeText={setPin}
-                keyboardType="numeric"
-                maxLength={6}
-                secureTextEntry
-            />
-
-            <TextInput
-                style={styles.input}
-                placeholder="Confirm PIN"
-                value={confirmPin}
-                onChangeText={setConfirmPin}
-                keyboardType="numeric"
-                maxLength={6}
-                secureTextEntry
-            />
-
-            <View style={styles.switchContainer}>
-                <Text style={styles.switchLabel}>Use Biometrics for Quick Access</Text>
-                <Switch
-                    value={useBiometrics}
-                    onValueChange={setUseBiometrics}
-                />
-            </View>
-
-            <TouchableOpacity
-                style={[styles.button, isSubmitting && styles.buttonDisabled]}
-                onPress={handleFinish}
-                disabled={isSubmitting}
+        <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+            <ScrollView
+                style={styles.container}
+                contentContainerStyle={styles.content}
+                keyboardShouldPersistTaps="handled"
             >
-                <Text style={styles.buttonText}>{isSubmitting ? 'Setting up...' : 'Finish Wallet Setup'}</Text>
-            </TouchableOpacity>
-        </View>
+                <Text style={styles.title}>Set App Lock</Text>
+                <Text style={styles.description}>
+                    Create a 6-digit PIN to secure your wallet.
+                </Text>
+
+                <TextInput
+                    style={styles.input}
+                    placeholder="Enter 6-digit PIN"
+                    value={pin}
+                    onChangeText={setPin}
+                    keyboardType="numeric"
+                    maxLength={6}
+                    secureTextEntry
+                />
+
+                <TextInput
+                    style={styles.input}
+                    placeholder="Confirm PIN"
+                    value={confirmPin}
+                    onChangeText={setConfirmPin}
+                    keyboardType="numeric"
+                    maxLength={6}
+                    secureTextEntry
+                />
+
+                <View style={styles.switchContainer}>
+                    <Text style={styles.switchLabel}>Use Biometrics for Quick Access</Text>
+                    <Switch
+                        value={useBiometrics}
+                        onValueChange={setUseBiometrics}
+                    />
+                </View>
+
+                <TouchableOpacity
+                    style={[styles.button, isSubmitting && styles.buttonDisabled]}
+                    onPress={handleFinish}
+                    disabled={isSubmitting}
+                >
+                    <Text style={styles.buttonText}>{isSubmitting ? 'Setting up...' : 'Finish Wallet Setup'}</Text>
+                </TouchableOpacity>
+
+                <InfoModal
+                    visible={modalConfig.visible}
+                    onClose={() => setModalConfig({ ...modalConfig, visible: false })}
+                    title={modalConfig.title}
+                    message={modalConfig.message}
+                    variant={modalConfig.variant}
+                />
+            </ScrollView>
+        </KeyboardAvoidingView>
     );
 }
 
@@ -99,7 +141,10 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#fff',
+    },
+    content: {
         padding: 24,
+        flexGrow: 1,
         justifyContent: 'center',
     },
     title: {

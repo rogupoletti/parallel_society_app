@@ -55,9 +55,6 @@ export default function WalletSetupScreen() {
                 </TouchableOpacity>
             </View>
 
-            <TouchableOpacity style={styles.footerLink}>
-                <Text style={styles.linkText}>Unsure? Learn more about wallets</Text>
-            </TouchableOpacity>
         </View>
     );
 }

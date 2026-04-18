@@ -1,4 +1,4 @@
-import 'react-native-get-random-values';
+import * as Crypto from 'expo-crypto';
 import { ethers } from 'ethers';
 
 export interface WalletAccount {
@@ -13,7 +13,7 @@ export class WalletService {
      * Uses 256 bits of entropy.
      */
     static generateMnemonic(): string[] {
-        const entropy = ethers.randomBytes(32);
+        const entropy = Crypto.getRandomBytes(32);
         const mnemonic = ethers.Mnemonic.fromEntropy(entropy);
         return mnemonic.phrase.split(' ');
     }

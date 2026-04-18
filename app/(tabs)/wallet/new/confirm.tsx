@@ -1,14 +1,15 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useWalletStore } from '@/store/walletStore';
 import { useState, useEffect } from 'react';
 import { WalletService } from '@/core/wallet/WalletService';
 import { SecureStorage } from '@/core/secure/SecureStorage';
 import { BIP39_WORDLIST } from '@/core/wallet/wordlist';
+import { InfoModal } from '@/components/ui/InfoModal';
 
 export default function ConfirmPhraseScreen() {
     const router = useRouter();
-    const { mnemonic, setWalletCreated, clearMnemonic } = useWalletStore();
+    const { mnemonic, setWalletCreated, clearMnemonic, setWalletAddress } = useWalletStore();
 
     // State
     const [indices, setIndices] = useState<number[]>([]);
@@ -16,6 +17,22 @@ export default function ConfirmPhraseScreen() {
     const [selectedWords, setSelectedWords] = useState<string[]>(['', '', '', '']);
     const [error, setError] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Modal state
+    const [modalConfig, setModalConfig] = useState<{
+        visible: boolean;
+        title: string;
+        message: string;
+        variant?: 'info' | 'error' | 'success' | 'warning';
+        onClose: () => void;
+    }>({
+        visible: false,
+        title: '',
+        message: '',
+        onClose: () => { },
+    });
+
+    const closePortal = () => setModalConfig(prev => ({ ...prev, visible: false }));
 
     useEffect(() => {
         if (!mnemonic) {
@@ -72,21 +89,35 @@ export default function ConfirmPhraseScreen() {
         }
 
         setIsSubmitting(true);
-        try {
-            // Derive and save
-            const wallet = WalletService.importMnemonic(mnemonic);
-            await SecureStorage.saveEncryptedKey('private_key', wallet.privateKey);
 
-            // Clear sensitive data from memory
-            clearMnemonic();
-            setWalletCreated(true);
+        // Use setTimeout to allow the UI to render the loading state before the main thread is blocked by crypto work
+        setTimeout(async () => {
+            try {
+                // Derive and save
+                const wallet = WalletService.importMnemonic(mnemonic);
+                await SecureStorage.saveEncryptedKey('private_key', wallet.privateKey);
+                await SecureStorage.saveEncryptedKey('mnemonic', mnemonic.join(' '));
 
-            // Navigate to App Lock setup
-            router.push('/auth/set-pin');
-        } catch (e) {
-            Alert.alert('Error', 'Failed to save wallet securely.');
-            setIsSubmitting(false);
-        }
+                // Save the wallet address to store
+                setWalletAddress(wallet.address);
+
+                // Clear sensitive data from memory
+                clearMnemonic();
+                setWalletCreated(true);
+
+                // Navigate to App Lock setup
+                router.push('/auth/set-pin');
+            } catch (e) {
+                setModalConfig({
+                    visible: true,
+                    title: 'Error',
+                    message: 'Failed to save wallet securely.',
+                    variant: 'error',
+                    onClose: closePortal
+                });
+                setIsSubmitting(false);
+            }
+        }, 100);
     };
 
     if (indices.length === 0 || options.length === 0) return null;
@@ -130,12 +161,27 @@ export default function ConfirmPhraseScreen() {
                 onPress={handleConfirm}
                 disabled={isSubmitting}
             >
-                <Text style={styles.buttonText}>{isSubmitting ? 'Verifying...' : 'Confirm'}</Text>
+                {isSubmitting ? (
+                    <View style={styles.loadingContainer}>
+                        <ActivityIndicator color="#fff" style={{ marginRight: 8 }} />
+                        <Text style={styles.buttonText}>Creating Secure Wallet...</Text>
+                    </View>
+                ) : (
+                    <Text style={styles.buttonText}>Confirm</Text>
+                )}
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
                 <Text style={styles.backButtonText}>Back to View Phrase</Text>
             </TouchableOpacity>
+
+            <InfoModal
+                visible={modalConfig.visible}
+                onClose={modalConfig.onClose}
+                title={modalConfig.title}
+                message={modalConfig.message}
+                variant={modalConfig.variant}
+            />
         </ScrollView>
     );
 }
@@ -228,6 +274,11 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 16,
         fontWeight: '600',
+    },
+    loadingContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     backButton: {
         alignItems: 'center',

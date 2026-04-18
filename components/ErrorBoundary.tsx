@@ -28,9 +28,9 @@ export class ErrorBoundary extends Component<Props, State> {
         if (this.state.hasError) {
             return (
                 <View style={styles.container}>
-                    <Text style={styles.title}>Oops, something went wrong.</Text>
+                    <Text style={styles.title}>Oops! Something went wrong.</Text>
                     <Text style={styles.message}>
-                        {this.state.error?.message || 'An unexpected error occurred.'}
+                        {this.state.error?.message || 'The application encountered an unexpected error.'}
                     </Text>
                     <TouchableOpacity
                         style={styles.button}

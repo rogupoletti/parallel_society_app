@@ -46,4 +46,5 @@ export class SecureStorage {
     static async deleteKey(key: string): Promise<void> {
         await SecureStore.deleteItemAsync(this.KEY_PREFIX + key);
     }
+
 }

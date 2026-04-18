@@ -9,20 +9,26 @@ export default function LegalScreen() {
     return (
         <ScrollView style={styles.container} contentContainerStyle={styles.content}>
             <Text style={styles.stepIndicator}>Step 1 of 3</Text>
-            <Text style={styles.title}>Legal & Agreement</Text>
+
             <Text style={styles.description}>
                 Please review and agree to the following documents to become a citizen of our digital nation.
             </Text>
 
-            <TouchableOpacity style={styles.card}>
+            <TouchableOpacity
+                style={styles.card}
+                onPress={() => router.push('/legal/principles')}
+            >
                 <View style={styles.iconPlaceholder} />
                 <View style={styles.cardContent}>
-                    <Text style={styles.cardTitle}>Terms of Use</Text>
-                    <Text style={styles.cardDesc}>These terms outline your rights, responsibilities, and our data privacy commitments.</Text>
+                    <Text style={styles.cardTitle}>Principles of Liberty</Text>
+                    <Text style={styles.cardDesc}>These principles outline your rights, responsibilities, and our core values.</Text>
                 </View>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.card}>
+            <TouchableOpacity
+                style={styles.card}
+                onPress={() => router.push('/legal/charter')}
+            >
                 <View style={styles.iconPlaceholder} />
                 <View style={styles.cardContent}>
                     <Text style={styles.cardTitle}>Digital Nation Charter</Text>
@@ -38,7 +44,7 @@ export default function LegalScreen() {
                     <View style={[styles.checkboxInner, agreed && styles.checkboxChecked]} />
                 </TouchableOpacity>
                 <Text style={styles.agreementText}>
-                    I have read, understood, and agree to the Terms of Use and the Digital Nation Charter.
+                    I have read, understood, and agree to the Principles of Liberty and the Digital Nation Charter.
                 </Text>
             </View>
 
@@ -64,13 +70,8 @@ const styles = StyleSheet.create({
     stepIndicator: {
         color: '#666',
         textAlign: 'center',
-        marginBottom: 16,
-    },
-    title: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        textAlign: 'center',
-        marginBottom: 16,
+        marginBottom: 24,
+        marginTop: 8,
     },
     description: {
         fontSize: 16,

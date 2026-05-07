@@ -7,7 +7,7 @@
  */
 import { useAppKit, useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
 import { BrowserProvider } from 'ethers';
-import type { Eip1193Provider } from 'ethers';
+import type { Provider } from '@reown/appkit/react';
 
 export interface WalletConnectState {
     /** Connected wallet address (checksummed) */
@@ -33,7 +33,7 @@ export interface WalletConnectState {
 export function useWalletConnect(): WalletConnectState {
     const { open, close } = useAppKit();
     const { address, isConnected } = useAppKitAccount();
-    const { walletProvider } = useAppKitProvider<Eip1193Provider>('eip155');
+    const { walletProvider } = useAppKitProvider<Provider>('eip155');
 
     const connect = () => {
         open();

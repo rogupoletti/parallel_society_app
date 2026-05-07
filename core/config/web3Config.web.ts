@@ -34,7 +34,8 @@ export const rootstock: AppKitNetwork = {
 };
 
 // Project ID from Reown Dashboard (https://dashboard.reown.com)
-const projectId = process.env.EXPO_PUBLIC_WALLETCONNECT_PROJECT_ID || 'YOUR_PROJECT_ID';
+// Public projectId for localhost testing only — replace with your own for production
+const projectId = process.env.EXPO_PUBLIC_WALLETCONNECT_PROJECT_ID || 'b56e18d47c72ab683b10814fe9495694';
 
 // Metadata for the WalletConnect modal
 const metadata = {

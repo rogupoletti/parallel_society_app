@@ -15,6 +15,12 @@ interface AuthState {
     setIsLocked: (locked: boolean) => void;
     setBiometricsEnabled: (enabled: boolean) => void;
     login: (mnemonic: string, username?: string, email?: string) => Promise<void>;
+    loginWithExternalWallet: (
+        address: string,
+        signMessageFn: (message: string) => Promise<string>,
+        username?: string,
+        email?: string
+    ) => Promise<void>;
     logout: () => Promise<void>;
 }
 
@@ -35,6 +41,24 @@ export const useAuthStore = create<AuthState>((set) => ({
         set({ loading: true, error: null });
         try {
             const user = await AuthService.signInWithWallet(mnemonic, username, email);
+            set({ user, isAuthenticated: true, loading: false });
+        } catch (error: any) {
+            set({ error: error.message, loading: false });
+            throw error;
+        }
+    },
+
+    loginWithExternalWallet: async (
+        address: string,
+        signMessageFn: (message: string) => Promise<string>,
+        username?: string,
+        email?: string
+    ) => {
+        set({ loading: true, error: null });
+        try {
+            const user = await AuthService.signInWithExternalWallet(
+                address, signMessageFn, username, email
+            );
             set({ user, isAuthenticated: true, loading: false });
         } catch (error: any) {
             set({ error: error.message, loading: false });

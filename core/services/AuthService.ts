@@ -62,6 +62,60 @@ export class AuthService {
         return userCredential.user;
     }
 
+    /**
+     * Web auth flow: uses an externally connected wallet (MetaMask/Trust via WalletConnect)
+     * to sign the nonce instead of deriving a wallet from a local mnemonic.
+     *
+     * @param address The wallet address from the connected wallet
+     * @param signMessageFn A function that signs a message using the connected wallet
+     * @param username Optional username metadata
+     * @param email Optional email metadata
+     */
+    static async signInWithExternalWallet(
+        address: string,
+        signMessageFn: (message: string) => Promise<string>,
+        username?: string,
+        email?: string
+    ): Promise<User> {
+        if (!BACKEND_URL) throw new Error('Auth backend URL not configured');
+
+        // 1. Request Nonce
+        const nonceRes = await fetch(`${BACKEND_URL}/authRequestNonce`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address })
+        });
+
+        if (!nonceRes.ok) {
+            const error = await nonceRes.text();
+            throw new Error(`Failed to get nonce: ${error}`);
+        }
+
+        const { nonce } = await nonceRes.json();
+
+        // 2. Delegate signing to external wallet (MetaMask, Trust, etc.)
+        const message = `Sign in to Parallel Society Governance\nNonce: ${nonce}`;
+        const signature = await signMessageFn(message);
+
+        // 3. Verify on backend
+        const verifyRes = await fetch(`${BACKEND_URL}/authVerify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address, signature, username, email })
+        });
+
+        if (!verifyRes.ok) {
+            const error = await verifyRes.text();
+            throw new Error(`Failed to verify signature: ${error}`);
+        }
+
+        const { token } = await verifyRes.json();
+
+        // 4. Sign in to Firebase
+        const userCredential = await signInWithCustomToken(firebaseAuth, token);
+        return userCredential.user;
+    }
+
     static async logout(): Promise<void> {
         await signOut(firebaseAuth);
     }

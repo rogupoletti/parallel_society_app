@@ -1,138 +1,33 @@
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
-import { useState, useEffect, useCallback } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useWalletStore } from '@/store/walletStore';
-import { TOKENS, TokenSymbol } from '@/core/config/tokens';
-import { sendService, FeeResult } from '@/core/services/SendService';
-import { ethers } from 'ethers';
-import { debounce } from 'lodash';
+import { TokenSymbol } from '@/core/config/tokens';
+import { useSendTransaction } from '@/hooks/useSendTransaction';
 
 export default function SendScreen() {
     const router = useRouter();
     const params = useLocalSearchParams();
     const { balances, walletAddress } = useWalletStore();
 
-    // State
-    const [selectedToken, setSelectedToken] = useState<TokenSymbol>((params.token as TokenSymbol) || 'RBTC');
-    const [toAddress, setToAddress] = useState('');
-    const [amount, setAmount] = useState('');
-    const [isAddressValid, setIsAddressValid] = useState(true);
-    const [feeResult, setFeeResult] = useState<FeeResult | null>(null);
-    const [calculatingFee, setCalculatingFee] = useState(false);
-    const [errorData, setErrorData] = useState<{ field: 'address' | 'amount' | 'fee'; message: string } | null>(null);
-
-    // Debounced Fee Estimation
-    const estimateFee = useCallback(
-        async (token: TokenSymbol, to: string, amt: string) => {
-            if (!ethers.isAddress(to) || !walletAddress) return;
-
-            setCalculatingFee(true);
-            setFeeResult(null);
-            setErrorData(null); // Clear previous errors during calculation
-
-            try {
-                const result = await sendService.estimateSendFee({
-                    token,
-                    to,
-                    amount: amt || '0',
-                    from: walletAddress
-                });
-                setFeeResult(result);
-            } catch (error) {
-                console.error('Fee estimation error:', error);
-                setErrorData({ field: 'fee', message: 'Failed to estimate gas fee' });
-            } finally {
-                setCalculatingFee(false);
-            }
-        },
-        [walletAddress]
-    );
-
-    // Debounce the estimator
-    useEffect(() => {
-        const handler = setTimeout(() => {
-            if (walletAddress && ethers.isAddress(toAddress)) {
-                estimateFee(selectedToken, toAddress, amount);
-            } else {
-                setFeeResult(null);
-            }
-        }, 500);
-
-        return () => clearTimeout(handler);
-    }, [selectedToken, toAddress, amount, walletAddress]);
-
-    // Input Handlers
-    const handleAddressChange = (text: string) => {
-        setToAddress(text);
-        setIsAddressValid(text === '' || ethers.isAddress(text));
-        if (text !== '' && !ethers.isAddress(text)) {
-            setErrorData({ field: 'address', message: 'Invalid address format' });
-        } else {
-            // Clear address error if valid
-            if (errorData?.field === 'address') setErrorData(null);
-        }
-    };
-
-    const handleAmountChange = (text: string) => {
-        // Normalize: replace comma with dot to support all keyboards
-        const normalizedText = text.replace(',', '.');
-
-        // Allow decimals
-        if (/^\d*\.?\d*$/.test(normalizedText) || text === '') {
-            setAmount(normalizedText);
-            if (errorData?.field === 'amount') setErrorData(null);
-        }
-    };
-
-    const handleSetMax = () => {
-        const balance = balances[selectedToken]?.formatted || '0';
-
-        if (selectedToken === 'RBTC' && feeResult) {
-            // For RBTC, subtract fee from balance
-            // This is a naive estimation, user might need to adjust manually if fee changes
-            // Converting everything to BigInt for precision would be better, but strings work for simple case
-            const feeVal = parseFloat(feeResult.formattedFee);
-            const balanceVal = parseFloat(balance);
-            const max = Math.max(0, balanceVal - feeVal * 1.5); // 1.5x buffer for safety
-            setAmount(max.toFixed(6));
-        } else {
-            // For Tokens, full balance
-            setAmount(balance);
-        }
-    };
-
-    const validateBeforeReview = () => {
-        if (!walletAddress) return false;
-        if (!isAddressValid || !toAddress) {
-            setErrorData({ field: 'address', message: 'Valid address required' });
-            return false;
-        }
-
-        const amtVal = parseFloat(amount || '0');
-        if (amtVal <= 0) {
-            setErrorData({ field: 'amount', message: 'Amount must be greater than 0' });
-            return false;
-        }
-
-        const balanceVal = parseFloat(balances[selectedToken]?.formatted || '0');
-        if (amtVal > balanceVal) {
-            setErrorData({ field: 'amount', message: 'Insufficient balance' });
-            return false;
-        }
-
-        if (selectedToken === 'LUT' && feeResult) {
-            // Check if we have enough RBTC for fee
-            const rbtcBalance = parseFloat(balances.RBTC?.formatted || '0');
-            const feeVal = parseFloat(feeResult.formattedFee);
-            if (feeVal > rbtcBalance) {
-                setErrorData({ field: 'fee', message: 'Insufficient RBTC for network fee' });
-                return false;
-            }
-        }
-
-        return true;
-    };
+    const {
+        selectedToken,
+        setSelectedToken,
+        toAddress,
+        handleAddressChange,
+        amount,
+        handleAmountChange,
+        handleSetMax,
+        isAddressValid,
+        feeResult,
+        calculatingFee,
+        errorData,
+        validateBeforeReview
+    } = useSendTransaction({
+        initialToken: (params.token as TokenSymbol) || 'RBTC',
+        balances,
+        walletAddress
+    });
 
     const onNext = () => {
         if (validateBeforeReview() && feeResult) {
@@ -156,19 +51,30 @@ export default function SendScreen() {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.container}
         >
-            <Stack.Screen options={{ title: `Send ${selectedToken}`, headerBackTitle: 'Wallet' }} />
+            <Stack.Screen options={{ 
+                title: `Send ${selectedToken}`, 
+                headerBackTitle: 'Wallet',
+                headerStyle: { backgroundColor: '#F8F9FB' },
+                headerShadowVisible: false,
+            }} />
 
             <ScrollView contentContainerStyle={styles.content}>
 
-                {/* Token Selector */}
-                <View style={styles.tokenSelector}>
+                {/* Token Selector - Glass effect */}
+                <View style={styles.tokenGlassSelector}>
                     {(['RBTC', 'LUT'] as TokenSymbol[]).map((t) => (
                         <TouchableOpacity
                             key={t}
-                            style={[styles.tokenOption, selectedToken === t && styles.tokenOptionSelected]}
+                            style={[
+                                styles.tokenOption, 
+                                selectedToken === t && styles.tokenOptionSelected
+                            ]}
                             onPress={() => setSelectedToken(t)}
                         >
-                            <Text style={[styles.tokenOptionText, selectedToken === t && styles.tokenOptionTextSelected]}>
+                            <Text style={[
+                                styles.tokenOptionText, 
+                                selectedToken === t && styles.tokenOptionTextSelected
+                            ]}>
                                 {t}
                             </Text>
                         </TouchableOpacity>
@@ -179,55 +85,60 @@ export default function SendScreen() {
                 <View style={styles.balanceContainer}>
                     <Text style={styles.balanceLabel}>Available Balance</Text>
                     <Text style={styles.balanceValue}>
-                        {balances[selectedToken]?.formatted || '0.00'} {selectedToken}
+                        {balances[selectedToken]?.formatted || '0.00'} <Text style={styles.balanceValueSymbol}>{selectedToken}</Text>
                     </Text>
                 </View>
 
-                {/* To Address */}
-                <View style={styles.inputGroup}>
-                    <Text style={styles.label}>To Address</Text>
-                    <TextInput
-                        style={[styles.input, !isAddressValid && styles.inputError]}
-                        placeholder="0x..."
-                        value={toAddress}
-                        onChangeText={handleAddressChange}
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                    />
-                    {errorData?.field === 'address' && (
-                        <Text style={styles.errorText}>{errorData.message}</Text>
-                    )}
-                </View>
-
-                {/* Amount */}
-                <View style={styles.inputGroup}>
-                    <View style={styles.labelRow}>
-                        <Text style={styles.label}>Amount</Text>
-                        <TouchableOpacity onPress={handleSetMax}>
-                            <Text style={styles.maxButton}>Max</Text>
-                        </TouchableOpacity>
-                    </View>
-                    <View style={styles.amountInputContainer}>
+                {/* Glassmorphism Cards for Inputs */}
+                <View style={styles.glassCard}>
+                    {/* To Address */}
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.label}>Recipient Address</Text>
                         <TextInput
-                            style={[styles.amountInput]}
-                            placeholder="0.00"
-                            value={amount}
-                            onChangeText={handleAmountChange}
-                            keyboardType="decimal-pad"
+                            style={[styles.input, !isAddressValid && styles.inputError]}
+                            placeholder="0x..."
+                            placeholderTextColor="#A0AEC0"
+                            value={toAddress}
+                            onChangeText={handleAddressChange}
+                            autoCapitalize="none"
+                            autoCorrect={false}
                         />
-                        <Text style={styles.inputSuffix}>{selectedToken}</Text>
+                        {errorData?.field === 'address' && (
+                            <Text style={styles.errorText}>{errorData.message}</Text>
+                        )}
                     </View>
-                    {errorData?.field === 'amount' && (
-                        <Text style={styles.errorText}>{errorData.message}</Text>
-                    )}
+
+                    {/* Amount */}
+                    <View style={styles.inputGroup}>
+                        <View style={styles.labelRow}>
+                            <Text style={styles.label}>Amount</Text>
+                            <TouchableOpacity onPress={handleSetMax} style={styles.maxButton}>
+                                <Text style={styles.maxButtonText}>MAX</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <View style={[styles.amountInputContainer, errorData?.field === 'amount' && styles.inputError]}>
+                            <TextInput
+                                style={styles.amountInput}
+                                placeholder="0.00"
+                                placeholderTextColor="#A0AEC0"
+                                value={amount}
+                                onChangeText={handleAmountChange}
+                                keyboardType="decimal-pad"
+                            />
+                            <Text style={styles.inputSuffix}>{selectedToken}</Text>
+                        </View>
+                        {errorData?.field === 'amount' && (
+                            <Text style={styles.errorText}>{errorData.message}</Text>
+                        )}
+                    </View>
                 </View>
 
                 {/* Fee Estimate */}
-                <View style={styles.feeContainer}>
+                <View style={styles.feeGlassContainer}>
                     <View style={styles.feeRow}>
-                        <Text style={styles.feeLabel}>Estimated Fee</Text>
+                        <Text style={styles.feeLabel}>Network Fee Estimate</Text>
                         {calculatingFee ? (
-                            <ActivityIndicator size="small" color="#666" />
+                            <ActivityIndicator size="small" color="#4A5568" />
                         ) : feeResult ? (
                             <Text style={styles.feeValue}>{parseFloat(feeResult.formattedFee).toFixed(6)} RBTC</Text>
                         ) : (
@@ -260,128 +171,163 @@ export default function SendScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#fff',
+        backgroundColor: '#F8F9FB', // Soft off-white backdrop
     },
     content: {
         padding: 24,
     },
-    tokenSelector: {
+    tokenGlassSelector: {
         flexDirection: 'row',
-        backgroundColor: '#f5f5f5',
-        borderRadius: 12,
-        padding: 4,
-        marginBottom: 24,
+        backgroundColor: 'rgba(255, 255, 255, 0.6)',
+        borderRadius: 16,
+        padding: 6,
+        marginBottom: 32,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.8)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.05,
+        shadowRadius: 10,
+        elevation: 1,
     },
     tokenOption: {
         flex: 1,
-        paddingVertical: 8,
+        paddingVertical: 10,
         alignItems: 'center',
-        borderRadius: 8,
+        borderRadius: 12,
     },
     tokenOptionSelected: {
-        backgroundColor: '#fff',
+        backgroundColor: '#FFFFFF',
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 4,
         elevation: 2,
     },
     tokenOptionText: {
-        fontSize: 14,
+        fontSize: 15,
         fontWeight: '600',
-        color: '#666',
+        color: '#A0AEC0',
     },
     tokenOptionTextSelected: {
-        color: '#007AFF',
+        color: '#2D3748',
     },
     balanceContainer: {
         alignItems: 'center',
-        marginBottom: 32,
+        marginBottom: 36,
     },
     balanceLabel: {
         fontSize: 14,
-        color: '#666',
-        marginBottom: 4,
+        color: '#718096',
+        marginBottom: 8,
+        letterSpacing: 0.5,
+        textTransform: 'uppercase',
     },
     balanceValue: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: '#1a1a1a',
+        fontSize: 36,
+        fontWeight: '800',
+        color: '#1A202C',
+        letterSpacing: -1,
+    },
+    balanceValueSymbol: {
+        fontSize: 20,
+        fontWeight: '600',
+        color: '#4A5568',
+    },
+    glassCard: {
+        backgroundColor: 'rgba(255, 255, 255, 0.7)',
+        borderRadius: 24,
+        padding: 20,
+        borderWidth: 1.5,
+        borderColor: 'rgba(255, 255, 255, 1)',
+        shadowColor: '#4A5568',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.04,
+        shadowRadius: 16,
+        elevation: 2,
+        marginBottom: 24,
     },
     inputGroup: {
-        marginBottom: 24,
+        marginBottom: 20,
     },
     labelRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 8,
+        marginBottom: 10,
     },
     label: {
         fontSize: 14,
-        fontWeight: '500',
-        color: '#1a1a1a',
+        fontWeight: '600',
+        color: '#4A5568',
         marginBottom: 8,
     },
     maxButton: {
+        backgroundColor: '#EBF4FF',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 8,
+    },
+    maxButtonText: {
         fontSize: 12,
-        color: '#007AFF',
-        fontWeight: '600',
-        backgroundColor: '#e1f5fe',
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 4,
+        color: '#3182CE',
+        fontWeight: '700',
+        letterSpacing: 0.5,
     },
     input: {
-        backgroundColor: '#f9f9f9',
+        backgroundColor: 'rgba(255, 255, 255, 0.9)',
         borderWidth: 1,
-        borderColor: '#e1e1e1',
-        borderRadius: 12,
+        borderColor: '#E2E8F0',
+        borderRadius: 16,
         padding: 16,
         fontSize: 16,
-        color: '#1a1a1a',
+        color: '#2D3748',
     },
     amountInputContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#f9f9f9',
+        backgroundColor: 'rgba(255, 255, 255, 0.9)',
         borderWidth: 1,
-        borderColor: '#e1e1e1',
-        borderRadius: 12,
+        borderColor: '#E2E8F0',
+        borderRadius: 16,
         paddingHorizontal: 16,
     },
     amountInput: {
         flex: 1,
         paddingVertical: 16,
-        fontSize: 18,
-        fontWeight: '600',
-        color: '#1a1a1a',
+        fontSize: 20,
+        fontWeight: '700',
+        color: '#2D3748',
     },
     inputSuffix: {
         fontSize: 16,
-        fontWeight: '600',
-        color: '#999',
+        fontWeight: '700',
+        color: '#A0AEC0',
         marginLeft: 8,
     },
     inputError: {
-        borderColor: '#dc3545',
+        borderColor: '#FC8181',
+        backgroundColor: '#FFF5F5',
     },
     errorText: {
-        color: '#dc3545',
-        fontSize: 12,
-        marginTop: 4,
+        color: '#E53E3E',
+        fontSize: 13,
+        marginTop: 6,
+        fontWeight: '500',
     },
     errorTextCenter: {
-        color: '#dc3545',
-        fontSize: 12,
-        marginTop: 4,
+        color: '#E53E3E',
+        fontSize: 13,
+        marginTop: 6,
         textAlign: 'center',
+        fontWeight: '500',
     },
-    feeContainer: {
-        backgroundColor: '#f8f9fa',
+    feeGlassContainer: {
+        backgroundColor: 'rgba(255, 255, 255, 0.5)',
         padding: 16,
-        borderRadius: 12,
-        marginTop: 8,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.8)',
     },
     feeRow: {
         flexDirection: 'row',
@@ -390,32 +336,39 @@ const styles = StyleSheet.create({
     },
     feeLabel: {
         fontSize: 14,
-        color: '#666',
+        fontWeight: '500',
+        color: '#718096',
     },
     feeValue: {
         fontSize: 14,
-        fontWeight: '500',
-        color: '#1a1a1a',
+        fontWeight: '700',
+        color: '#2D3748',
     },
     footer: {
         padding: 24,
-        backgroundColor: '#fff',
-        borderTopWidth: 1,
-        borderTopColor: '#f0f0f0',
+        paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+        backgroundColor: '#F8F9FB',
     },
     primaryButton: {
-        backgroundColor: '#007AFF',
-        paddingVertical: 16,
-        borderRadius: 16,
+        backgroundColor: '#3182CE',
+        paddingVertical: 18,
+        borderRadius: 20,
         alignItems: 'center',
+        shadowColor: '#3182CE',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.2,
+        shadowRadius: 12,
+        elevation: 4,
     },
     primaryButtonDisabled: {
-        backgroundColor: '#9ccaf9',
-        opacity: 0.7,
+        backgroundColor: '#A0AEC0',
+        shadowOpacity: 0,
+        elevation: 0,
     },
     primaryButtonText: {
         color: '#fff',
-        fontSize: 16,
-        fontWeight: 'bold',
+        fontSize: 17,
+        fontWeight: '700',
+        letterSpacing: 0.5,
     },
 });

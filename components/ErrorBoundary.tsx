@@ -7,15 +7,17 @@ interface Props {
 
 interface State {
     hasError: boolean;
+    error: Error | null;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
     public state: State = {
         hasError: false,
+        error: null,
     };
 
-    public static getDerivedStateFromError(_: Error): State {
-        return { hasError: true };
+    public static getDerivedStateFromError(error: Error): State {
+        return { hasError: true, error };
     }
 
     public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
@@ -28,7 +30,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 <View style={styles.container}>
                     <Text style={styles.title}>Oops! Something went wrong.</Text>
                     <Text style={styles.message}>
-                        The application encountered an unexpected error.
+                        {this.state.error?.message || 'The application encountered an unexpected error.'}
                     </Text>
                     <TouchableOpacity
                         style={styles.button}

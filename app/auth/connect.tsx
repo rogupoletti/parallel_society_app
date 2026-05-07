@@ -4,10 +4,11 @@
  * After connection, auto-signs in via AuthService.signInWithExternalWallet.
  */
 import { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, Pressable, TouchableOpacity, StyleSheet, ActivityIndicator, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useWalletStore } from '@/store/walletStore';
+import { Ionicons } from '@expo/vector-icons';
 
 // Conditionally import web-only modules
 let useWalletConnect: any;

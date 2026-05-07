@@ -28,7 +28,7 @@
     "web": {
       "favicon": "./assets/parallel_society_logo.jpg",
       "bundler": "metro",
-      "output": "static",
+      "output": "single",
       "name": "Parallel Society",
       "shortName": "ParallelSociety",
       "description": "Decentralized Governance on Rootstock",
